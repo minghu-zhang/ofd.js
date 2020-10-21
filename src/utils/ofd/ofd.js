@@ -21,24 +21,41 @@
 import {calPageBox, calPageBoxScale, renderPage} from "@/utils/ofd/ofd_render";
 import {pipeline} from "@/utils/ofd/pipeline";
 import {
-    getDocRoot,
-    getDocument,
-    getDocumentRes,
-    getPage,
-    getPublicRes,
-    getTemplatePage,
+    getDocRoots,
+    parseSingleDoc,
     unzipOfd
 } from "@/utils/ofd/ofd_parser";
+import {digestCheckProcess} from "@/utils/ofd/ses_signature_parser"
+import {getPageScal, setPageScal} from "@/utils/ofd/ofd_util";
+import * as JSZipUtils from "jszip-utils";
 
 export const parseOfdDocument = function (options) {
-    pipeline.call(this, async () => await unzipOfd(options.ofd), getDocRoot, getDocument,
-        getDocumentRes, getPublicRes, getTemplatePage, getPage)
+    if (options.ofd instanceof File || options.ofd instanceof ArrayBuffer) {
+        doParseOFD(options);
+    } else {
+        JSZipUtils.getBinaryContent(options.ofd, function (err, data) {
+            if (err) {
+                if (options.fail) {
+                    options.fail(err);
+                }
+            } else {
+                options.ofd = data;
+                doParseOFD(options);
+            }
+        });
+    }
+}
+
+const doParseOFD = function (options) {
+    global.xmlParseFlag = 0;
+    pipeline.call(this, async () => await unzipOfd(options.ofd), getDocRoots, parseSingleDoc)
         .then(res => {
             if (options.success) {
                 options.success(res);
             }
         })
         .catch(res => {
+            console.log(res)
             if (options.fail) {
                 options.fail(res);
             }
@@ -47,6 +64,9 @@ export const parseOfdDocument = function (options) {
 
 export const renderOfd = function (screenWidth, ofd) {
     let divArray = [];
+    if (!ofd) {
+        return divArray;
+    }
     for (const page of ofd.pages) {
         let box = calPageBox(screenWidth, ofd.document, page);
         const pageId = Object.keys(page)[0];
@@ -61,6 +81,9 @@ export const renderOfd = function (screenWidth, ofd) {
 
 export const renderOfdByScale = function (ofd) {
     let divArray = [];
+    if (!ofd) {
+        return divArray;
+    }
     for (const page of ofd.pages) {
         let box = calPageBoxScale(ofd.document, page);
         const pageId = Object.keys(page)[0];
@@ -72,3 +95,22 @@ export const renderOfdByScale = function (ofd) {
     }
     return divArray;
 }
+
+export const digestCheck = function (options) {
+    // pipeline.call(this, async () => await digestCheckProcess(options.arr))
+    //     .then(res => {
+    //         if (options.success) {
+    //             options.success(res);
+    //         }
+    //     });
+    return digestCheckProcess(options)
+}
+
+export const setPageScale = function (scale) {
+    setPageScal(scale);
+}
+
+export const getPageScale = function () {
+    return getPageScal();
+}
+
