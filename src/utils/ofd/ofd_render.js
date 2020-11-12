@@ -149,31 +149,33 @@ export const renderPage = function (pageDiv, page, tpls, fontResObj, drawParamRe
         }
     }
     if (page[pageId].stamp) {
+        const fixIndex = page[pageId].json.pfIndex;
         for (const stamp of page[pageId].stamp) {
           if (stamp.type === 'ofd') {
-            renderSealPage(pageDiv, stamp.obj.pages, stamp.obj.tpls, true, stamp.stamp.stampAnnot, stamp.obj.fontResObj, stamp.obj.drawParamResObj, stamp.obj.multiMediaResObj, stamp.stamp.sealObj.SES_Signature, stamp.stamp.signedInfo);
+            renderSealPage(pageDiv, stamp.obj.pages, stamp.obj.tpls, true, stamp.stamp.stampAnnot, stamp.obj.fontResObj, stamp.obj.drawParamResObj, stamp.obj.multiMediaResObj, stamp.stamp.sealObj.SES_Signature, stamp.stamp.signedInfo, fixIndex);
           } else if (stamp.type === 'png') {
               let sealBoundary = converterBox(stamp.obj.boundary);
-              const oid = Array.isArray(stamp.stamp.stampAnnot)?stamp.stamp.stampAnnot[0]['pfIndex']:stamp.stamp.stampAnnot['pfIndex'];
+              const oid = (Array.isArray(stamp.stamp.stampAnnot)?stamp.stamp.stampAnnot[0]['@_ID']:stamp.stamp.stampAnnot['@_ID']) + fixIndex;
               let element = renderImageOnDiv(pageDiv.style.width, pageDiv.style.height, stamp.obj.img, sealBoundary, stamp.obj.clip, true, stamp.stamp.sealObj.SES_Signature, stamp.stamp.signedInfo,oid);
               pageDiv.appendChild(element);
           }
         }
     }
     if (page[pageId].annotation) {
+        const fixIndex = page[pageId].json.pfIndex;
         for (const annotation of page[pageId].annotation) {
-            renderAnnotation(pageDiv, annotation, fontResObj, drawParamResObj, multiMediaResObj);
+            renderAnnotation(pageDiv, annotation, fontResObj, drawParamResObj, multiMediaResObj, fixIndex);
         }
     }
 }
 
-const renderAnnotation = function (pageDiv, annotation, fontResObj, drawParamResObj, multiMediaResObj) {
+const renderAnnotation = function (pageDiv, annotation, fontResObj, drawParamResObj, multiMediaResObj, fixIndex) {
     let div = document.createElement('div');
-    div.setAttribute('style', `overflow: hidden;z-index:${annotation['pfIndex']};position:relative;`)
+    div.setAttribute('style', `overflow: hidden;z-index:${annotation['@_ID']+fixIndex};position:relative;`)
     let boundary = annotation['appearance']['@_Boundary'];
     if (boundary) {
         let divBoundary = converterBox(parseStBox(boundary));
-        div.setAttribute('style', `overflow: hidden;z-index:${annotation['pfIndex']};position:absolute; left: ${divBoundary.x}px; top: ${divBoundary.y}px; width: ${divBoundary.w}px; height: ${divBoundary.h}px`)
+        div.setAttribute('style', `overflow: hidden;z-index:${annotation['@_ID']+fixIndex};position:absolute; left: ${divBoundary.x}px; top: ${divBoundary.y}px; width: ${divBoundary.w}px; height: ${divBoundary.h}px`)
     }
     const contentLayer = annotation['appearance'];
     renderLayer(div, fontResObj, drawParamResObj, multiMediaResObj, contentLayer, false);
@@ -181,7 +183,7 @@ const renderAnnotation = function (pageDiv, annotation, fontResObj, drawParamRes
 
 }
 
-const renderSealPage = function (pageDiv, pages, tpls, isStampAnnot, stampAnnot, fontResObj, drawParamResObj, multiMediaResObj, SES_Signature, signedInfo) {
+const renderSealPage = function (pageDiv, pages, tpls, isStampAnnot, stampAnnot, fontResObj, drawParamResObj, multiMediaResObj, SES_Signature, signedInfo, fixIndex) {
     for (const page of pages) {
         const pageId = Object.keys(page)[0];
         let stampAnnotBoundary = {x: 0, y: 0, w: 0, h: 0};
@@ -191,7 +193,7 @@ const renderSealPage = function (pageDiv, pages, tpls, isStampAnnot, stampAnnot,
         let divBoundary = converterBox(stampAnnotBoundary);
         let div = document.createElement('div');
         div.setAttribute("name","seal_img_div");
-        div.setAttribute('style', `cursor: pointer; position:relative; left: ${divBoundary.x}px; top: ${divBoundary.y}px; width: ${divBoundary.w}px; height: ${divBoundary.h}px`)
+        div.setAttribute('style', `z-index:${fixIndex+10000};cursor: pointer; position:relative; left: ${divBoundary.x}px; top: ${divBoundary.y}px; width: ${divBoundary.w}px; height: ${divBoundary.h}px`)
         div.setAttribute('data-ses-signature', `${JSON.stringify(SES_Signature)}`);
         div.setAttribute('data-signed-info', `${JSON.stringify(signedInfo)}`);
         const template = page[pageId]['json']['ofd:Template'];
@@ -282,9 +284,10 @@ export const renderImageObject = function (pageWidth, pageHeight, multiMediaResO
         const img = multiMediaResObj[resId].img;
         const width = multiMediaResObj[resId].width;
         const height = multiMediaResObj[resId].height;
-        return renderImageOnCanvas(img, width, height, boundary, imageObject['pfIndex']);
+        return renderImageOnCanvas(img, width, height, boundary, imageObject['@_ID']);
     } else {
-        return renderImageOnDiv(pageWidth, pageHeight, multiMediaResObj[resId].img, boundary, false, false, null, null, imageObject['pfIndex']);
+        const ctm = imageObject['@_CTM'];
+        return renderImageOnDiv(pageWidth, pageHeight, multiMediaResObj[resId].img, boundary, false, false, null, null, imageObject['@_ID'], ctm);
     }
 }
 
@@ -307,7 +310,7 @@ const renderImageOnCanvas = function (img, imgWidth, imgHeight, boundary, oid){
     return canvas;
 }
 
-export const renderImageOnDiv = function (pageWidth, pageHeight, imgSrc, boundary, clip, isStampAnnot, SES_Signature, signedInfo, oid) {
+export const renderImageOnDiv = function (pageWidth, pageHeight, imgSrc, boundary, clip, isStampAnnot, SES_Signature, signedInfo, oid, ctm) {
     let div = document.createElement('div');
     if(isStampAnnot)
     {
@@ -317,8 +320,16 @@ export const renderImageOnDiv = function (pageWidth, pageHeight, imgSrc, boundar
     }
     let img = document.createElement('img');
     img.src = imgSrc;
-    img.setAttribute('width', '100%');
-    img.setAttribute('height', '100%');
+    if (isStampAnnot) {
+        img.setAttribute('width', '100%');
+        img.setAttribute('height', '100%');
+    }
+    if (ctm) {
+        const ctms = parseCtm(ctm);
+        img.setAttribute('width', `${converterDpi(ctms[0])}px`);
+        img.setAttribute('height', `${converterDpi(ctms[3])}px`);
+        img.setAttribute('transform', `matrix(${ctms[0]} ${ctms[1]} ${ctms[2]} ${ctms[3]} ${converterDpi(ctms[4])} ${converterDpi(ctms[5])})`)
+    }
     div.appendChild(img);
     const pw = parseFloat(pageWidth.replace('px', ''));
     const ph = parseFloat(pageHeight.replace('px', ''));
@@ -381,7 +392,7 @@ export const renderTextObject = function (fontResObj, textObject, defaultFillCol
     let height = boundary.h;
     let left = boundary.x;
     let top = boundary.y;
-    svg.setAttribute('style', `overflow:visible;position:absolute;width:${width}px;height:${height}px;left:${left}px;top:${top}px;z-index:${textObject['pfIndex']}`);
+    svg.setAttribute('style', `overflow:visible;position:absolute;width:${width}px;height:${height}px;left:${left}px;top:${top}px;z-index:${textObject['@_ID']}`);
     return svg;
 }
 
@@ -432,7 +443,25 @@ export const renderPathObject = function (drawParamResObj, pathObject, defaultFi
     if (pathObject['@_Fill'] != 'false') {
         fillStyle = `fill:${isStampAnnot ? 'none' : defaultFillColor ? defaultFillColor : 'none'};`;
     }
-    path.setAttribute('style', `${strokeStyle};${fillStyle}`)
+    let strokeJoinStyle = '';
+    if (pathObject['@_Join']) {
+        strokeJoinStyle = `stroke-linejoin:${pathObject['@_Join']}`;
+    }
+    let strokeCapStyle = '';
+    if (pathObject['@_Cap']) {
+        strokeCapStyle = `stroke-linecap:${pathObject['@_Cap']}`;
+    }
+    let strokeDashStyle = '';
+    if (pathObject['@_DashPattern']) {
+        let dash = pathObject['@_DashPattern'];
+        const dashs = parseCtm(dash);
+        let offset = 0;
+        if (pathObject['@_DashOffset']) {
+            offset = pathObject['@_DashOffset'];
+        }
+        strokeDashStyle = `stroke-dasharray:${converterDpi(dashs[0])},${converterDpi(dashs[1])};stroke-dashoffset:${converterDpi(offset)}px`;
+    }
+    path.setAttribute('style', `${strokeStyle};${fillStyle};${strokeJoinStyle};${strokeCapStyle};${strokeDashStyle}`)
     let d = '';
     for (const point of points) {
         if (point.type === 'M') {
@@ -451,6 +480,6 @@ export const renderPathObject = function (drawParamResObj, pathObject, defaultFi
     let height = isStampAnnot ? boundary.h : Math.ceil(boundary.h);
     let left = boundary.x;
     let top = boundary.y;
-    svg.setAttribute('style', `overflow:visible;position:absolute;width:${width}px;height:${height}px;left:${left}px;top:${top}px;z-index:${pathObject['pfIndex']}`);
+    svg.setAttribute('style', `overflow:visible;position:absolute;width:${width}px;height:${height}px;left:${left}px;top:${top}px;z-index:${pathObject['@_ID']}`);
     return svg;
 }
